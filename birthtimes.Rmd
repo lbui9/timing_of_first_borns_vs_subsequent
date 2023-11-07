@@ -1,0 +1,194 @@
+---
+title: "Assignment 8: Birth Times"
+author: "Linh Bui"
+date: "`r Sys.Date()`"
+documentclass: article
+geometry: margin=1in
+fontsize: 11pt
+output:
+  pdf_document:
+    toc: false
+    df_print: kable
+    fig_caption: false
+    number_sections: false
+    dev: pdf
+    highlight: tango
+  html_document:
+    theme: default
+    self_contained: true
+    toc: false
+    df_print: kable
+    fig_caption: false
+    number_sections: false
+    smart: true
+    dev: svg
+---
+
+```{r setup, include = FALSE}
+# DO NOT ALTER THIS CHUNK
+knitr::opts_chunk$set(
+  echo = TRUE,
+  eval = TRUE,
+  fig.width = 5,
+  fig.asp = 0.618,
+  out.width = "70%",
+  dpi = 120,
+  fig.align = "center",
+  cache = FALSE
+)
+# Load required packages
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(infer))
+# Load Cohen's d bootstrap helper functions
+load("bootstrap_cohens_d.RData")
+# Load dataset
+nsfg6 <- read_rds("2002FemPreg.rds")
+# Set seed
+set.seed(361356566)
+```
+
+## Exercise 1
+
+```{r}
+live_births <- nsfg6 %>%
+  filter(outcome == 1)
+```
+
+```{r}
+pregnancy_length <- live_births %>%
+mutate(
+  birth_order = if_else(
+    birthord == 1,
+    "first",
+    "other"
+  ) 
+) %>%
+select(prglngth, birth_order)
+```
+
+
+## Exercise 2
+
+```{r}
+pregnancy_length %>% 
+  ggplot() + 
+  geom_histogram( mapping = aes(x = prglngth, fill = birth_order), 
+                  alpha = 0.3,
+                  binwidth = 1) +
+  xlim(27, 46) +
+  labs(title = "PMF histograms of the pregnancy length",
+       x = "pregnancy length",
+       y = "frequency")
+  
+```
+
+* The mode of the distributions is 39. 
+
+* By observing the visualization only, is it impossible to confirm the statement that "first born children either arrive early or arrive late when compared with non-first-borns" because the shapes of the two distributions are quite similar. Therefore, a hypothesis test should be used. 
+
+## Exercise 3
+
+```{r}
+pregnancy_length %>%
+  group_by(birth_order) %>%
+  summarize(
+    mean = mean(prglngth),
+    median = median(prglngth),
+    standard_deviation = sd(prglngth),
+    interquartile_range = IQR(prglngth),
+    maximum = max(prglngth),
+    minimum = min(prglngth)
+)
+```
+
+* According to the summary statistics, it does not look like there may be a notable difference between the two distributions because except for the minimum values, other statistics between the two distributions are close to be the same. This implies that there might be no big difference between the arrival time of first born children and that of non-first-borns.
+
+
+## Exercise 4
+
+* The proper test statistic is "diff in means".
+
+* Null hypothesis: There is no difference in the prenancy lengths of first-borns and non-first-borns. 
+
+* Alternative hypothesis: First born children either arrive earlier or later than non-first-borns.
+
+* A two-sided hypothesis test is going to be conducted.
+
+## Exercise 5
+
+```{r}
+birth_null <- pregnancy_length %>%
+  specify(prglngth ~ birth_order) %>%
+  hypothesize(null = "independence") %>%
+  generate(reps = 10000, type = "permute") %>%
+  calculate(stat = "diff in means", order = c("first", "other"))
+```
+
+```{r}
+birth_obs_stat <- pregnancy_length %>% 
+  specify(prglngth ~ birth_order) %>%
+  calculate(stat = "diff in means", order = c("first", "other"))
+```
+
+
+```{r}
+birth_null %>%
+  get_p_value(obs_stat = birth_obs_stat, direction = "two_sided")
+```
+
+* The p_value is 0.1646 > α = 0.05, so we fail to reject the null hypothesis.
+
+
+```{r}
+birth_null %>%
+  visualize() +
+  shade_p_value(obs_stat = birth_obs_stat, direction = "two_sided") +
+  labs(title = "The simulated null distribution",
+       x = "diff in means",
+       y = "frequency")
+```
+
+
+## Exercise 6
+
+```{r}
+birth_bootstraps <- pregnancy_length %>%
+  specify(prglngth ~ birth_order) %>%
+  generate(10000, type = "bootstrap") %>%
+  calculate(stat = "diff in means", order = c("first", "other"))
+```
+
+```{r}
+bootstrap_ci <- birth_bootstraps %>%
+  get_confidence_interval()
+bootstrap_ci
+```
+
+* The observed statistic falls within the range of the 95% confidence interval. 
+
+```{r}
+birth_bootstraps %>%
+  visualize() +
+  shade_confidence_interval(bootstrap_ci) +
+  labs(title = "Birth Simulation-Based Bootstrap Distribution",
+       x = "bootstrap_ci",
+       y = "frequency")
+```
+
+
+## Exercise 7
+
+```{r}
+bootstrap_results <- cohens_d_bootstrap(data = pregnancy_length, 
+                                        model = prglngth ~ birth_order)
+```
+
+```{r}
+bootstrap_report(bootstrap_results)
+```
+
+```{r}
+plot_ci(bootstrap_results)
+```
+
+* The effect size (Cohen's d) for the difference in pregnancy lengths for "first" and "other" births is 0.0288791, which is very small. 
